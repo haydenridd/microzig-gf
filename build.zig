@@ -18,7 +18,7 @@ const port_list: []const struct {
     name: [:0]const u8,
     dep_name: [:0]const u8,
 } = &.{
-    // .{ .name = "esp", .dep_name = "port/espressif/esp" },
+    .{ .name = "esp", .dep_name = "port/espressif/esp" },
     .{ .name = "gd32", .dep_name = "port/gigadevice/gd32" },
     .{ .name = "atsam", .dep_name = "port/microchip/atsam" },
     .{ .name = "avr", .dep_name = "port/microchip/avr" },
@@ -683,6 +683,7 @@ inline fn custom_find_import_pkg_hash_or_fatal(comptime dep_name: []const u8) []
         if (@hasDecl(pkg, "build_zig") and pkg.build_zig == @This()) break pkg.deps;
     } else deps.root_deps;
 
+    @setEvalBranchQuota(2000); // DELETEME
     comptime for (pkg_deps) |dep| {
         if (std.mem.eql(u8, dep[0], dep_name)) return dep[1];
     };
