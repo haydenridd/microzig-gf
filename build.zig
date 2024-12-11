@@ -683,7 +683,6 @@ inline fn custom_find_import_pkg_hash_or_fatal(comptime dep_name: []const u8) []
         if (@hasDecl(pkg, "build_zig") and pkg.build_zig == @This()) break pkg.deps;
     } else deps.root_deps;
 
-    @setEvalBranchQuota(2000); // DELETEME
     comptime for (pkg_deps) |dep| {
         if (std.mem.eql(u8, dep[0], dep_name)) return dep[1];
     };
