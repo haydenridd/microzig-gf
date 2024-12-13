@@ -31,7 +31,7 @@ pub fn build(b: *std.Build) void {
         // and allows installing the firmware as a typical firmware file.
         //
         // This will also install into `$prefix/firmware` instead of `$prefix/bin`.
-        mb.install_firmware(firmware, .{});
+        mb.install_firmware(firmware, .{ .format = .esp });
 
         // For debugging, we also always install the firmware as an ELF file
         mb.install_firmware(firmware, .{ .format = .elf });

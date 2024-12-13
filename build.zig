@@ -569,7 +569,15 @@ pub fn MicroBuild(port_select: PortSelect) type {
                         },
 
                         .dfu => @panic("DFU is not implemented yet. See https://github.com/ZigEmbeddedGroup/microzig/issues/145 for more details!"),
-                        .esp => @panic("ESP firmware image is not implemented yet. See https://github.com/ZigEmbeddedGroup/microzig/issues/146 for more details!"),
+                        .esp => blk: {
+                            const elf2image_exe = fw.mb.builder.addSystemCommand(&[_][]const u8{
+                                "/Users/graziano/.espressif/python_env/idf5.3_py3.10_env/bin/esptool.py",
+                                "elf2image",
+                            });
+                            elf2image_exe.addFileArg(elf_file);
+                            elf2image_exe.addArg("--output");
+                            break :blk elf2image_exe.addOutputFileArg(basename);
+                        },
 
                         .custom => |generator| generator.convert(fw.target.dep, elf_file),
                     };

@@ -17,8 +17,7 @@ pub fn init(dep: *std.Build.Dependency) Self {
     };
     const chip_esp32c3: microzig.Target = .{
         .dep = dep,
-        // TODO: Exchange FLAT format with .esp format
-        .preferred_binary_format = .bin,
+        .preferred_binary_format = .esp,
         .chip = .{
             .name = "ESP32-C3",
             .url = "https://www.espressif.com/en/products/socs/esp32-c3",
