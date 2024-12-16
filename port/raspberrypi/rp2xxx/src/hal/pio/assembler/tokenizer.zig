@@ -1,6 +1,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+// TODO: This runs on the host, but we need the target CPU somehow
+const cpu = @import("../../compatibility.zig").cpu;
 const assembler = @import("../assembler.zig");
 const Diagnostics = assembler.Diagnostics;
 
@@ -785,30 +787,72 @@ pub const Tokenizer = struct {
         const num = Value{
             .expression = if (has_mode)
                 (try self.get_arg(diags)) orelse {
-                    diags.* = Diagnostics.init(self.index, "irq (mode) <num> (rel): failed to get num argument", .{});
+                    diags.* = Diagnostics.init(self.index, "irq (mode) <num> (prev,rel,next): failed to get num argument", .{});
                     return error.MissingArg;
                 }
             else
                 first,
         };
 
-        const rel: bool = if (try self.peek_arg(diags)) |result| blk: {
-            const rel_lower = try lowercase_bounded(256, result.str);
-            const is_rel = std.mem.eql(u8, "rel", rel_lower.slice());
-            if (is_rel)
-                self.consume_peek(result);
+        switch (comptime cpu) {
+            .RP2040 => {
+                const rel: bool = if (try self.peek_arg(diags)) |result| blk: {
+                    const rel_lower = try lowercase_bounded(256, result.str);
+                    const is_rel = std.mem.eql(u8, "rel", rel_lower.slice());
+                    if (is_rel)
+                        self.consume_peek(result);
 
-            break :blk is_rel;
-        } else false;
+                    break :blk is_rel;
+                } else false;
 
-        return Token.Instruction.Payload{
-            .irq = .{
-                .clear = clear,
-                .wait = wait,
-                .num = num,
-                .rel = rel,
+                return Token.Instruction.Payload{
+                    .irq = .{
+                        .clear = clear,
+                        .wait = wait,
+                        .num = num,
+                        .rel = rel,
+                    },
+                };
             },
-        };
+            .RP2350 => {
+                // This doesn't work: idx_mode's type only exists at comptime,
+                // even though this is a comptime-only switch :/
+                // Hardcoding the type
+                const idx_mode: u2 = if (try self.peek_arg(diags)) |result| blk: {
+                    const idxmode_lower = try lowercase_bounded(256, result.str);
+                    if (std.mem.eql(u8, "rel", idxmode_lower.slice())) {
+                        @compileLog("got rel"); // DELETEME
+                        self.consume_peek(result);
+                        break :blk 0b10;
+                        // break :blk .rel;
+                    } else if (std.mem.eql(u8, "prev", idxmode_lower.slice())) {
+                        @compileLog("got prev");
+                        self.consume_peek(result);
+                        break :blk 0b01;
+                        // break :blk .prev;
+                    } else if (std.mem.eql(u8, "next", idxmode_lower.slice())) {
+                        @compileLog("got next");
+                        self.consume_peek(result);
+                        break :blk 0b11;
+                        // break :blk .next;
+                    } else {
+                        // Not specified: direct
+                        break :blk 0b00;
+                        // break :blk .direct;
+                    }
+                } else 0b00;
+                // } else .direct;
+
+                return Token.Instruction.Payload{
+                    .irq = .{
+                        .clear = clear,
+                        .wait = wait,
+                        .num = num,
+                        .idxmode = @enumFromInt(idx_mode),
+                    },
+                };
+            },
+        }
     }
 
     fn get_set(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
@@ -1020,10 +1064,18 @@ pub const Token = struct {
             num: Value,
             rel: bool,
 
-            pub const Source = enum(u2) {
-                gpio = 0b00,
-                pin = 0b01,
-                irq = 0b10,
+            pub const Source = switch (cpu) {
+                .RP2040 => enum(u2) {
+                    gpio = 0b00,
+                    pin = 0b01,
+                    irq = 0b10,
+                },
+                .RP2350 => enum(u2) {
+                    gpio = 0b00,
+                    pin = 0b01,
+                    irq = 0b10,
+                    jmppin = 0b11,
+                },
             };
         };
 
@@ -1067,19 +1119,32 @@ pub const Token = struct {
             ifempty: bool,
         };
 
+        // TODO: Add mov to RX for rp2350
         pub const Mov = struct {
             destination: Destination,
             operation: Operation,
             source: Source,
 
-            pub const Destination = enum(u3) {
-                pins = 0b000,
-                x = 0b001,
-                y = 0b010,
-                exec = 0b100,
-                pc = 0b101,
-                isr = 0b110,
-                osr = 0b111,
+            pub const Destination = switch (cpu) {
+                .RP2040 => enum(u3) {
+                    pins = 0b000,
+                    x = 0b001,
+                    y = 0b010,
+                    exec = 0b100,
+                    pc = 0b101,
+                    isr = 0b110,
+                    osr = 0b111,
+                },
+                .RP2350 => enum(u3) {
+                    pins = 0b000,
+                    x = 0b001,
+                    y = 0b010,
+                    pindirs = 0b011,
+                    exec = 0b100,
+                    pc = 0b101,
+                    isr = 0b110,
+                    osr = 0b111,
+                },
             };
 
             pub const Operation = enum(u2) {
@@ -1099,11 +1164,26 @@ pub const Token = struct {
             };
         };
 
-        pub const Irq = struct {
-            clear: bool,
-            wait: bool,
-            num: Value,
-            rel: bool,
+        pub const Irq = switch (cpu) {
+            .RP2040 => struct {
+                clear: bool,
+                wait: bool,
+                num: Value,
+                rel: bool,
+            },
+            .RP2350 => struct {
+                clear: bool,
+                wait: bool,
+                num: Value,
+                idxmode: IdxMode,
+
+                pub const IdxMode = enum(u2) {
+                    direct = 0b00,
+                    prev = 0b01,
+                    rel = 0b10,
+                    next = 0b11,
+                };
+            },
         };
 
         pub const Set = struct {

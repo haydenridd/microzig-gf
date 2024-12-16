@@ -1,6 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+const cpu = @import("../../compatibility.zig").cpu;
 const assembler = @import("../assembler.zig");
 const Diagnostics = assembler.Diagnostics;
 
@@ -353,6 +354,7 @@ pub fn Encoder(comptime options: Options) type {
                         .block = @intFromBool(pull.block),
                     },
                 },
+                // TODO: Make sure this is OK? We just added one more encoding
                 .mov => |mov| .{
                     .mov = .{
                         .destination = mov.destination,
@@ -361,17 +363,32 @@ pub fn Encoder(comptime options: Options) type {
                     },
                 },
                 .irq => |irq| blk: {
-                    const irq_num = try self.evaluate(u5, program.*, irq.num, token_index, diags);
-                    break :blk .{
-                        .irq = .{
-                            .clear = @intFromBool(irq.clear),
-                            .wait = @intFromBool(irq.wait),
-                            .index = if (irq.rel)
-                                @as(u5, 0x10) | irq_num
-                            else
-                                irq_num,
+                    switch (cpu) {
+                        .RP2040 => {
+                            const irq_num = try self.evaluate(u5, program.*, irq.num, token_index, diags);
+                            break :blk .{
+                                .irq = .{
+                                    .clear = @intFromBool(irq.clear),
+                                    .wait = @intFromBool(irq.wait),
+                                    .index = if (irq.rel)
+                                        @as(u5, 0x10) | irq_num
+                                    else
+                                        irq_num,
+                                },
+                            };
                         },
-                    };
+                        .RP2350 => {
+                            const irq_num = try self.evaluate(u5, program.*, irq.num, token_index, diags);
+                            break :blk .{
+                                .irq = .{
+                                    .clear = @intFromBool(irq.clear),
+                                    .wait = @intFromBool(irq.wait),
+                                    .index = @as(u3, irq_num),
+                                    .idxmode = @intFromEnum(irq.idxmode),
+                                },
+                            };
+                        },
+                    }
                 },
                 .set => |set| .{
                     .set = .{
@@ -603,11 +620,20 @@ pub const Instruction = packed struct(u16) {
         destination: Token.Instruction.Mov.Destination,
     };
 
-    pub const Irq = packed struct(u8) {
-        index: u5,
-        wait: u1,
-        clear: u1,
-        reserved: u1 = 0,
+    pub const Irq = switch (cpu) {
+        .RP2040 => packed struct(u8) {
+            index: u5,
+            wait: u1,
+            clear: u1,
+            reserved: u1 = 0,
+        },
+        .RP2350 => packed struct(u8) {
+            index: u3,
+            idxmode: u2,
+            wait: u1,
+            clear: u1,
+            reserved: u1 = 0,
+        },
     };
 
     pub const Set = packed struct(u8) {
