@@ -378,7 +378,7 @@ pub fn Encoder(comptime options: Options) type {
                             };
                         },
                         .RP2350 => {
-                            const irq_num = try self.evaluate(u5, program.*, irq.num, token_index, diags);
+                            const irq_num = try self.evaluate(u3, program.*, irq.num, token_index, diags);
                             break :blk .{
                                 .irq = .{
                                     .clear = @intFromBool(irq.clear),
