@@ -1,7 +1,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-// TODO: This runs on the host, but we need the target CPU somehow
+// TODO: We can't import this and run the tests, since they don't run with
+// microzig available as a dep, and what would the cpu be?
 const cpu = @import("../../compatibility.zig").cpu;
 const assembler = @import("../assembler.zig");
 const Diagnostics = assembler.Diagnostics;
