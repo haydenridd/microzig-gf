@@ -14,12 +14,13 @@ pub const Options = struct {
 };
 
 pub fn tokenize(
+    comptime format: assembler.Format,
     source: []const u8,
     diags: *?assembler.Diagnostics,
     comptime options: Options,
-) !std.BoundedArray(Token, options.capacity) {
-    var tokens = std.BoundedArray(Token, options.capacity).init(0) catch unreachable;
-    var tokenizer = Tokenizer.init(source);
+) !std.BoundedArray(Token(format), options.capacity) {
+    var tokens = std.BoundedArray(Token(format), options.capacity).init(0) catch unreachable;
+    var tokenizer = Tokenizer(format).init(source);
     while (try tokenizer.next(diags)) |token|
         try tokens.append(token);
 
@@ -65,12 +66,16 @@ pub const Value = union(enum) {
 // '/' -> '*' -> block comment
 // '%' -> <whitespace> -> <identifier> -> <whitespace> -> '{' -> code block
 // '.' -> directive
-pub const Tokenizer = struct {
+pub fn Tokenizer(format: assembler.Format) type {
+    return struct {
+        const Self = @This();
+    format: assembler.Format,
     source: []const u8,
     index: u32,
 
-    pub fn format(
-        self: Tokenizer,
+    // TODO: Avoid name collision with the format field
+    pub fn format2(
+        self: Self,
         comptime fmt: []const u8,
         options: std.fmt.FormatOptions,
         writer: anytype,
@@ -97,39 +102,40 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn init(source: []const u8) Tokenizer {
-        return Tokenizer{
+    fn init( source: []const u8) Self {
+        return Self{
+            .format= format,
             .source = source,
             .index = 0,
         };
     }
 
-    fn consume(self: *Tokenizer, count: u32) void {
+    fn consume(self: *Self, count: u32) void {
         assert(self.index < self.source.len);
         self.index += count;
     }
 
-    fn peek(self: Tokenizer) ?u8 {
+    fn peek(self: Self) ?u8 {
         return if (self.index < self.source.len)
             self.source[self.index]
         else
             null;
     }
 
-    fn get(self: *Tokenizer) ?u8 {
+    fn get(self: *Self) ?u8 {
         return if (self.index < self.source.len) blk: {
             defer self.index += 1;
             break :blk self.source[self.index];
         } else null;
     }
 
-    fn skip_line(self: *Tokenizer) void {
+    fn skip_line(self: *Self) void {
         while (self.get()) |c|
             if (c == '\n')
                 return;
     }
 
-    fn skip_until_end_of_comment_block(self: *Tokenizer) void {
+    fn skip_until_end_of_comment_block(self: *Self) void {
         while (self.get()) |c| {
             if (c == '*') {
                 if (self.peek()) |p| {
@@ -142,7 +148,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn skip_until_end_of_code_block(self: *Tokenizer) void {
+    fn skip_until_end_of_code_block(self: *Self) void {
         // TODO: assert we have the code identifier and open curly bracket
         while (self.get()) |c| {
             if (c == '%') {
@@ -156,7 +162,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn read_until_whitespace_or_end(self: *Tokenizer) ![]const u8 {
+    fn read_until_whitespace_or_end(self: *Self) ![]const u8 {
         const start = self.index;
         var end: ?u32 = null;
         while (self.peek()) |p| {
@@ -172,7 +178,7 @@ pub const Tokenizer = struct {
         return self.source[start .. end orelse return error.EndOfStream];
     }
 
-    fn skip_whitespace(self: *Tokenizer) void {
+    fn skip_whitespace(self: *Self) void {
         while (self.peek()) |p| {
             switch (p) {
                 ' ', '\t', '\r', '\n', ',' => self.consume(1),
@@ -182,7 +188,7 @@ pub const Tokenizer = struct {
     }
 
     /// returns array of args
-    fn get_args(self: *Tokenizer, comptime num: u32, diags: *?Diagnostics) TokenizeError![num]?[]const u8 {
+    fn get_args(self: *Self, comptime num: u32, diags: *?Diagnostics) TokenizeError![num]?[]const u8 {
         var args: [num]?[]const u8 = undefined;
         for (&args) |*arg|
             arg.* = try self.get_arg(diags);
@@ -195,19 +201,19 @@ pub const Tokenizer = struct {
         start: u32,
     };
 
-    fn peek_arg(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!?PeekResult {
+    fn peek_arg(self: *Self, diags: *?Diagnostics) TokenizeError!?PeekResult {
         var tmp_index = self.index;
         return self.peek_arg_impl(&tmp_index, diags);
     }
 
-    fn consume_peek(self: *Tokenizer, result: PeekResult) void {
+    fn consume_peek(self: *Self, result: PeekResult) void {
         assert(self.index <= result.start);
         self.index = result.start + @as(u32, @intCast(result.str.len));
     }
 
     /// gets next arg without consuming the stream
     fn peek_arg_impl(
-        self: *Tokenizer,
+        self: *Self,
         index: *u32,
         diags: *?Diagnostics,
     ) TokenizeError!?PeekResult {
@@ -274,7 +280,7 @@ pub const Tokenizer = struct {
             null;
     }
 
-    fn get_arg(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!?[]const u8 {
+    fn get_arg(self: *Self, diags: *?Diagnostics) TokenizeError!?[]const u8 {
         return if (try self.peek_arg_impl(&self.index, diags)) |result|
             result.str
         else
@@ -286,7 +292,7 @@ pub const Tokenizer = struct {
         str: []const u8,
     };
 
-    fn get_identifier(self: *Tokenizer) TokenizeError!Identifier {
+    fn get_identifier(self: *Self) TokenizeError!Identifier {
         self.skip_whitespace();
         return Identifier{
             .index = self.index,
@@ -309,12 +315,12 @@ pub const Tokenizer = struct {
         TooBig,
     };
 
-    fn get_program(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+    fn get_program(self: *Self, index: u32, diags: *?Diagnostics) TokenizeError!Token(format) {
         const name = (try self.get_arg(diags)) orelse {
             diags.* = Diagnostics.init(index, "missing program name", .{});
             return error.MissingArg;
         };
-        return Token{
+        return Token(format){
             .index = index,
             .data = .{ .program = name },
         };
@@ -337,7 +343,7 @@ pub const Tokenizer = struct {
         return std.mem.eql(u8, &buf, lhs);
     }
 
-    fn get_define(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+    fn get_define(self: *Self, index: u32, diags: *?Diagnostics) TokenizeError!Token(format) {
         const maybe_public = try self.get_identifier();
         const is_public = eql_lower("public", maybe_public.str);
 
@@ -346,7 +352,7 @@ pub const Tokenizer = struct {
         else
             maybe_public;
 
-        return Token{
+        return Token(format){
             .index = index,
             .data = .{
                 .define = .{
@@ -364,7 +370,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_expression(self: *Tokenizer) TokenizeError!Value {
+    fn get_expression(self: *Self) TokenizeError!Value {
         const start = self.index;
         var count: u32 = 1;
 
@@ -391,7 +397,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn get_value(self: *Tokenizer) TokenizeError!Value {
+    fn get_value(self: *Self) TokenizeError!Value {
         self.skip_whitespace();
 
         if (self.peek()) |p|
@@ -405,9 +411,9 @@ pub const Tokenizer = struct {
             return error.NoValue;
     }
 
-    fn get_origin(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+    fn get_origin(self: *Self, index: u32, diags: *?Diagnostics) TokenizeError!Token(format) {
         _ = diags;
-        return Token{
+        return Token(format){
             .index = index,
             .data = .{
                 .origin = try self.get_value(),
@@ -415,7 +421,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_side_set(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+    fn get_side_set(self: *Self, index: u32, diags: *?Diagnostics) TokenizeError!Token(format) {
         const args = try self.get_args(3, diags);
         const count = try Value.from_string(args[0] orelse {
             diags.* = Diagnostics.init(index, "missing count", .{});
@@ -436,7 +442,7 @@ pub const Tokenizer = struct {
                 pindirs = true;
         }
 
-        return Token{
+        return Token(format){
             .index = index,
             .data = .{
                 .side_set = .{
@@ -448,23 +454,23 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_wrap_target(_: *Tokenizer, index: u32, _: *?Diagnostics) TokenizeError!Token {
-        return Token{
+    fn get_wrap_target(_: *Self, index: u32, _: *?Diagnostics) TokenizeError!Token(format) {
+        return Token(format){
             .index = index,
             .data = .{ .wrap_target = {} },
         };
     }
 
-    fn get_wrap(_: *Tokenizer, index: u32, _: *?Diagnostics) TokenizeError!Token {
-        return Token{
+    fn get_wrap(_: *Self, index: u32, _: *?Diagnostics) TokenizeError!Token(format) {
+        return Token(format){
             .index = index,
             .data = .{ .wrap = {} },
         };
     }
 
-    fn get_lang_opt(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+    fn get_lang_opt(self: *Self, index: u32, diags: *?Diagnostics) TokenizeError!Token(format) {
         _ = diags;
-        return Token{
+        return Token(format){
             .index = index,
             .data = .{
                 .lang_opt = .{
@@ -476,15 +482,15 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_word(self: *Tokenizer, index: u32, diags: *?Diagnostics) TokenizeError!Token {
+    fn get_word(self: *Self, index: u32, diags: *?Diagnostics) TokenizeError!Token(format) {
         _ = diags;
-        return Token{
+        return Token(format){
             .index = index,
             .data = .{ .word = try self.get_value() },
         };
     }
 
-    const directives = std.StaticStringMap(*const fn (*Tokenizer, u32, *?Diagnostics) TokenizeError!Token).initComptime(.{
+    const directives = std.StaticStringMap(*const fn (*Self, u32, *?Diagnostics) TokenizeError!Token(format)).initComptime(.{
         .{ "program", get_program },
         .{ "define", get_define },
         .{ "origin", get_origin },
@@ -495,7 +501,7 @@ pub const Tokenizer = struct {
         .{ "word", get_word },
     });
 
-    fn get_directive(self: *Tokenizer, diags: *?Diagnostics) !Token {
+    fn get_directive(self: *Self, diags: *?Diagnostics) !Token(format) {
         const index = self.index;
         const identifier = try self.read_until_whitespace_or_end();
         return if (directives.get(identifier)) |handler| ret: {
@@ -505,22 +511,22 @@ pub const Tokenizer = struct {
         } else error.InvalidDirective;
     }
 
-    fn get_nop(_: *Tokenizer, _: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
-        return Token.Instruction.Payload{
+    fn get_nop(_: *Self, _: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
+        return Token(format).Instruction.Payload{
             .nop = {},
         };
     }
 
-    fn target_from_string(str: []const u8) TokenizeError!Token.Instruction.Jmp.Target {
+    fn target_from_string(str: []const u8) TokenizeError!Token(format).Instruction.Jmp.Target {
         const value = Value.from_string(str);
-        return Token.Instruction.Payload{
+        return Token(format).Instruction.Payload{
             .jmp = .{
                 .condition = .always,
                 .target = switch (value) {
-                    .string => |label| Token.Instruction.Jmp.Target{
+                    .string => |label| Token(format).Instruction.Jmp.Target{
                         .label = label,
                     },
-                    else => Token.Instruction.Jmp.Target{
+                    else => Token(format).Instruction.Jmp.Target{
                         .value = value,
                     },
                 },
@@ -528,8 +534,8 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_jmp(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
-        const Condition = Token.Instruction.Jmp.Condition;
+    fn get_jmp(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
+        const Condition = Token(format).Instruction.Jmp.Condition;
         const conditions = std.StaticStringMap(Condition).initComptime(.{
             .{ "!x", .x_is_zero },
             .{ "x--", .x_dec },
@@ -548,12 +554,12 @@ pub const Tokenizer = struct {
         else
             (try self.get_arg(diags)) orelse return error.MissingArg;
 
-        return Token.Instruction.Payload{
+        return Token(format).Instruction.Payload{
             .jmp = .{ .condition = cond, .target = target_str },
         };
     }
 
-    fn get_wait(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_wait(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         const polarity = try std.fmt.parseInt(u1, (try self.get_arg(diags)) orelse return error.MissingArg, 0);
         const source_str = (try self.get_arg(diags)) orelse return error.MissingArg;
         const pin = try Value.from_string((try self.get_arg(diags)) orelse return error.MissingArg);
@@ -563,7 +569,7 @@ pub const Tokenizer = struct {
             buf[i] = std.ascii.toLower(c);
 
         const source_lower = buf[0..source_str.len];
-        const source: Token.Instruction.Wait.Source =
+        const source: Token(format).Instruction.Wait.Source =
             if (std.mem.eql(u8, "gpio", source_lower))
             .gpio
         else if (std.mem.eql(u8, "pin", source_lower))
@@ -584,7 +590,7 @@ pub const Tokenizer = struct {
         else
             false;
 
-        return Token.Instruction.Payload{
+        return Token(format).Instruction.Payload{
             .wait = .{
                 .polarity = polarity,
                 .source = source,
@@ -610,7 +616,7 @@ pub const Tokenizer = struct {
     // I need to keep in mind with `get_args()` is that I must only consume the
     // args that are used. side set and delay may be on the same line
 
-    fn get_in(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_in(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         const source_str = (try self.get_arg(diags)) orelse return error.MissingArg;
         const bit_count_str = (try self.get_arg(diags)) orelse return error.MissingArg;
 
@@ -621,15 +627,15 @@ pub const Tokenizer = struct {
         else
             @as(u5, @intCast(bit_count_tmp));
 
-        return Token.Instruction.Payload{
+        return Token(format).Instruction.Payload{
             .in = .{
-                .source = std.meta.stringToEnum(Token.Instruction.In.Source, source_lower.slice()) orelse return error.InvalidSource,
+                .source = std.meta.stringToEnum(Token(format).Instruction.In.Source, source_lower.slice()) orelse return error.InvalidSource,
                 .bit_count = bit_count,
             },
         };
     }
 
-    fn get_out(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_out(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         const dest_src = (try self.get_arg(diags)) orelse return error.MissingArg;
         const bit_count_str = (try self.get_arg(diags)) orelse return error.MissingArg;
 
@@ -640,15 +646,15 @@ pub const Tokenizer = struct {
         else
             @as(u5, @intCast(bit_count_tmp));
 
-        return Token.Instruction.Payload{
+        return Token(format).Instruction.Payload{
             .out = .{
-                .destination = std.meta.stringToEnum(Token.Instruction.Out.Destination, dest_lower.slice()) orelse return error.InvalidDestination,
+                .destination = std.meta.stringToEnum(Token(format).Instruction.Out.Destination, dest_lower.slice()) orelse return error.InvalidDestination,
                 .bit_count = bit_count,
             },
         };
     }
 
-    fn block_from_peek(self: *Tokenizer, result: PeekResult) TokenizeError!bool {
+    fn block_from_peek(self: *Self, result: PeekResult) TokenizeError!bool {
         const block_lower = try lowercase_bounded(256, result.str);
         const is_block = std.mem.eql(u8, "block", block_lower.slice());
         const is_noblock = std.mem.eql(u8, "noblock", block_lower.slice());
@@ -664,7 +670,7 @@ pub const Tokenizer = struct {
             true;
     }
 
-    fn get_push(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_push(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         return if (try self.peek_arg(diags)) |first_result| ret: {
             const lower = try lowercase_bounded(256, first_result.str);
             const iffull = std.mem.eql(u8, "iffull", lower.slice());
@@ -677,13 +683,13 @@ pub const Tokenizer = struct {
                     true;
             } else try self.block_from_peek(first_result);
 
-            break :ret Token.Instruction.Payload{
+            break :ret Token(format).Instruction.Payload{
                 .push = .{
                     .iffull = iffull,
                     .block = block,
                 },
             };
-        } else Token.Instruction.Payload{
+        } else Token(format).Instruction.Payload{
             .push = .{
                 .iffull = false,
                 .block = true,
@@ -691,7 +697,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_pull(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_pull(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         return if (try self.peek_arg(diags)) |first_result| ret: {
             const lower = try lowercase_bounded(256, first_result.str);
             const ifempty = std.mem.eql(u8, "ifempty", lower.slice());
@@ -704,13 +710,13 @@ pub const Tokenizer = struct {
                     true;
             } else try self.block_from_peek(first_result);
 
-            break :ret Token.Instruction.Payload{
+            break :ret Token(format).Instruction.Payload{
                 .pull = .{
                     .ifempty = ifempty,
                     .block = block,
                 },
             };
-        } else Token.Instruction.Payload{
+        } else Token(format).Instruction.Payload{
             .pull = .{
                 .ifempty = false,
                 .block = true,
@@ -718,10 +724,10 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_mov(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_mov(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         const dest_str = (try self.get_arg(diags)) orelse return error.MissingArg;
         const dest_lower = try lowercase_bounded(256, dest_str);
-        const destination = std.meta.stringToEnum(Token.Instruction.Mov.Destination, dest_lower.slice()) orelse return error.InvalidDestination;
+        const destination = std.meta.stringToEnum(Token(format).Instruction.Mov.Destination, dest_lower.slice()) orelse return error.InvalidDestination;
 
         const second = try self.get_arg(diags) orelse return error.MissingArg;
         const op_prefixed: ?[]const u8 = if (std.mem.startsWith(u8, second, "!"))
@@ -742,8 +748,8 @@ pub const Tokenizer = struct {
             second;
 
         const source_lower = try lowercase_bounded(256, source_str);
-        const source = std.meta.stringToEnum(Token.Instruction.Mov.Source, source_lower.slice()) orelse return error.InvalidSource;
-        const operation: Token.Instruction.Mov.Operation = if (op_prefixed) |op_str|
+        const source = std.meta.stringToEnum(Token(format).Instruction.Mov.Source, source_lower.slice()) orelse return error.InvalidSource;
+        const operation: Token(format).Instruction.Mov.Operation = if (op_prefixed) |op_str|
             if (std.mem.eql(u8, "!", op_str))
                 .invert
             else if (std.mem.eql(u8, "~", op_str))
@@ -755,7 +761,7 @@ pub const Tokenizer = struct {
         else
             .none;
 
-        return Token.Instruction.Payload{
+        return Token(format).Instruction.Payload{
             .mov = .{
                 .destination = destination,
                 .source = source,
@@ -764,7 +770,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn get_irq(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_irq(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         const first = (try self.get_arg(diags)) orelse return error.MissingArg;
 
         var clear = false;
@@ -795,7 +801,7 @@ pub const Tokenizer = struct {
                 first,
         };
 
-        switch (comptime cpu) {
+        switch (comptime format) {
             .RP2040 => {
                 const rel: bool = if (try self.peek_arg(diags)) |result| blk: {
                     const rel_lower = try lowercase_bounded(256, result.str);
@@ -806,7 +812,7 @@ pub const Tokenizer = struct {
                     break :blk is_rel;
                 } else false;
 
-                return Token.Instruction.Payload{
+                return Token(format).Instruction.Payload{
                     .irq = .{
                         .clear = clear,
                         .wait = wait,
@@ -822,17 +828,17 @@ pub const Tokenizer = struct {
                 const idx_mode: u2 = if (try self.peek_arg(diags)) |result| blk: {
                     const idxmode_lower = try lowercase_bounded(256, result.str);
                     if (std.mem.eql(u8, "rel", idxmode_lower.slice())) {
-                        @compileLog("got rel"); // DELETEME
+                        // @compileLog("got rel"); // DELETEME
                         self.consume_peek(result);
                         break :blk 0b10;
                         // break :blk .rel;
                     } else if (std.mem.eql(u8, "prev", idxmode_lower.slice())) {
-                        @compileLog("got prev");
+                        // @compileLog("got prev"); // DELETEME
                         self.consume_peek(result);
                         break :blk 0b01;
                         // break :blk .prev;
                     } else if (std.mem.eql(u8, "next", idxmode_lower.slice())) {
-                        @compileLog("got next");
+                        // @compileLog("got next"); // DELETEME
                         self.consume_peek(result);
                         break :blk 0b11;
                         // break :blk .next;
@@ -844,7 +850,7 @@ pub const Tokenizer = struct {
                 } else 0b00;
                 // } else .direct;
 
-                return Token.Instruction.Payload{
+                return Token(format).Instruction.Payload{
                     .irq = .{
                         .clear = clear,
                         .wait = wait,
@@ -856,7 +862,7 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn get_set(self: *Tokenizer, diags: *?Diagnostics) TokenizeError!Token.Instruction.Payload {
+    fn get_set(self: *Self, diags: *?Diagnostics) TokenizeError!Token(format).Instruction.Payload {
         const dest_str = (try self.get_arg(diags)) orelse {
             diags.* = Diagnostics.init(0, "missing destination", .{});
             return error.MissingArg;
@@ -865,15 +871,15 @@ pub const Tokenizer = struct {
 
         const dest_lower = try lowercase_bounded(256, dest_str);
 
-        return Token.Instruction.Payload{
+        return Token(format).Instruction.Payload{
             .set = .{
-                .destination = std.meta.stringToEnum(Token.Instruction.Set.Destination, dest_lower.slice()) orelse return error.InvalidDestination,
+                .destination = std.meta.stringToEnum(Token(format).Instruction.Set.Destination, dest_lower.slice()) orelse return error.InvalidDestination,
                 .value = value,
             },
         };
     }
 
-    const instructions = std.StaticStringMap(*const fn (*Tokenizer, *?Diagnostics) TokenizeError!Token.Instruction.Payload).initComptime(.{
+    const instructions = std.StaticStringMap(*const fn (*Self, *?Diagnostics) TokenizeError!Token(format).Instruction.Payload).initComptime(.{
         .{ "nop", get_nop },
         .{ "jmp", get_jmp },
         .{ "wait", get_wait },
@@ -886,7 +892,7 @@ pub const Tokenizer = struct {
         .{ "set", get_set },
     });
 
-    fn get_instruction(self: *Tokenizer, name: Identifier, diags: *?Diagnostics) !Token {
+    fn get_instruction(self: *Self, name: Identifier, diags: *?Diagnostics) !Token(format) {
         const name_lower = try lowercase_bounded(256, name.str);
         const payload = if (instructions.get(name_lower.slice())) |handler|
             try handler(self, diags)
@@ -927,7 +933,7 @@ pub const Tokenizer = struct {
         }
 
         self.skip_line();
-        return Token{
+        return Token(self.format){
             .index = name.index,
             .data = .{
                 .instruction = .{
@@ -939,7 +945,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    fn next(self: *Tokenizer, diags: *?assembler.Diagnostics) !?Token {
+    fn next(self: *Self, diags: *?assembler.Diagnostics) !?Token(format) {
         while (self.peek()) |p| {
             switch (p) {
                 ' ', '\t', '\n', '\r', ',' => self.consume(1),
@@ -968,7 +974,7 @@ pub const Tokenizer = struct {
 
                     // definitely a label
                     return if (eql_lower("public", first.str))
-                        Token{
+                        Token(format){
                             .index = first.index,
                             .data = .{
                                 .label = .{
@@ -981,7 +987,7 @@ pub const Tokenizer = struct {
                             },
                         }
                     else if (std.mem.endsWith(u8, first.str, ":"))
-                        Token{
+                        Token(format){
                             .index = first.index,
                             .data = .{
                                 .label = .{
@@ -999,12 +1005,15 @@ pub const Tokenizer = struct {
         return null;
     }
 };
+}
 
-pub const Token = struct {
+pub fn Token(comptime format: assembler.Format) type {
+    return struct {
+    const Self = @This();
     index: u32,
     data: union(enum) {
         program: []const u8,
-        define: Token.Define,
+        define: Self.Define,
         origin: Value,
         side_set: SideSet,
         wrap_target: void,
@@ -1065,7 +1074,7 @@ pub const Token = struct {
             num: Value,
             rel: bool,
 
-            pub const Source = switch (cpu) {
+            pub const Source = switch (format) {
                 .RP2040 => enum(u2) {
                     gpio = 0b00,
                     pin = 0b01,
@@ -1126,7 +1135,7 @@ pub const Token = struct {
             operation: Operation,
             source: Source,
 
-            pub const Destination = switch (cpu) {
+            pub const Destination = switch (format) {
                 .RP2040 => enum(u3) {
                     pins = 0b000,
                     x = 0b001,
@@ -1165,7 +1174,7 @@ pub const Token = struct {
             };
         };
 
-        pub const Irq = switch (cpu) {
+        pub const Irq = switch (format) {
             .RP2040 => struct {
                 clear: bool,
                 wait: bool,
@@ -1219,6 +1228,7 @@ pub const Token = struct {
         option: []const u8,
     };
 };
+}
 
 //==============================================================================
 // Tokenization Tests

@@ -6,7 +6,9 @@ const assembler = @import("../assembler.zig");
 const Diagnostics = assembler.Diagnostics;
 
 const tokenizer = @import("tokenizer.zig");
-const Token = tokenizer.Token;
+// TODO: How do I pass in the format to this module?
+const format: assembler.Format = .RP2350;
+const Token = tokenizer.Token(format);
 const Value = tokenizer.Value;
 
 const Expression = @import("Expression.zig");
