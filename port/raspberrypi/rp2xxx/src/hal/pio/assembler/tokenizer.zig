@@ -1979,7 +1979,7 @@ test "tokenize.instr.irq.rel" {
         .clear = false,
         .wait = false,
         .num = 2,
-        // .rel = true,
+        .rel = true,
     }, tokens.get(0));
 }
 

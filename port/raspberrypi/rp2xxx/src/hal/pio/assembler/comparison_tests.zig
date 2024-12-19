@@ -32,7 +32,8 @@ const c = @cImport({
 });
 
 fn pio_comparison(comptime source: []const u8) !void {
-    const output = comptime assembler.assemble(.RP2040, source, .{});
+    comptime var diags: ?assembler.Diagnostics = null;
+    const output = try comptime assembler.assemble_impl(.RP2040, source, &diags, .{});
     try std.testing.expect(output.programs.len > 0);
 
     inline for (output.programs) |program| {
