@@ -33,8 +33,18 @@ jobs:
 
       - name: Unit Test Ports
         run: |
-          cd port/raspberrypi/rp2xxx
+          pushd port/gigadevice/gd32
           zig build test
+          popd
+          pushd port/nxp/lpc
+          zig build test
+          popd
+          pushd port/raspberrypi/rp2xxx
+          zig build test
+          popd
+          pushd port/stmicro/stm32
+          zig build test
+          popd
 
       - name: Build Website
         run: zig build
