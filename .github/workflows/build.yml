@@ -46,6 +46,22 @@ jobs:
           zig build test
           popd
 
+      - name: Build examples
+        # TODO: Get this building from the root of the examples directory
+        run: |
+          pushd examples/gigadevice/gd32
+          zig build
+          popd
+          pushd examples/nxp/lpc
+          zig build
+          popd
+          pushd examples/raspberrypi/rp2xxx
+          zig build
+          popd
+          pushd examples/stmicro/stm32
+          zig build
+          popd
+
       - name: Build Website
         run: zig build
         working-directory: website
