@@ -1,14 +1,15 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const cpu = @import("../../compatibility.zig").cpu;
 const assembler = @import("../assembler.zig");
 const Diagnostics = assembler.Diagnostics;
 
 const tokenizer = @import("tokenizer.zig");
-// TODO: How do I pass in the format to this module?
-const format: assembler.Format = .RP2350;
-const Token = tokenizer.Token(format);
+// TODO: How do I pass in the format to this module? There is no (comptime)
+// instance object
+// const format: assembler.Format = .RP2350;
+// const Token = tokenizer.Token(format);
+const Token = tokenizer.Token;
 const Value = tokenizer.Value;
 
 const Expression = @import("Expression.zig");
@@ -19,10 +20,12 @@ pub const Options = struct {
 };
 
 pub fn encode(
-    comptime tokens: []const Token,
+    // We don't want the user to have to specify this
+    comptime format: assembler.Format,
+    comptime tokens: []const Token(format),
     diags: *?assembler.Diagnostics,
     comptime options: Options,
-) !Encoder(options).Output {
+) !Encoder(format, options).Output {
     var encoder = Encoder(options).init(tokens);
     return try encoder.encode_output(diags);
 }
@@ -44,10 +47,10 @@ pub const DefineWithIndex = struct {
     index: u32,
 };
 
-pub fn Encoder(comptime options: Options) type {
+pub fn Encoder(comptime format: assembler.Format, comptime options: Options) type {
     return struct {
         output: Self.Output,
-        tokens: []const Token,
+        tokens: []const Token(format),
         index: u32,
 
         const Self = @This();
@@ -365,7 +368,7 @@ pub fn Encoder(comptime options: Options) type {
                     },
                 },
                 .irq => |irq| blk: {
-                    switch (cpu) {
+                    switch (format) {
                         .RP2040 => {
                             const irq_num = try self.evaluate(u5, program.*, irq.num, token_index, diags);
                             break :blk .{
@@ -553,96 +556,98 @@ pub fn Encoder(comptime options: Options) type {
     };
 }
 
-pub const Instruction = packed struct(u16) {
-    payload: Payload,
-    delay_side_set: u5,
-    tag: Tag,
+pub fn Instruction(comptime format: assembler.Format) type {
+    return packed struct(u16) {
+        payload: Payload,
+        delay_side_set: u5,
+        tag: Tag,
 
-    pub const Payload = packed union {
-        jmp: Jmp,
-        wait: Wait,
-        in: In,
-        out: Out,
-        push: Push,
-        pull: Pull,
-        mov: Mov,
-        irq: Irq,
-        set: Set,
-    };
+        pub const Payload = packed union {
+            jmp: Jmp,
+            wait: Wait,
+            in: In,
+            out: Out,
+            push: Push,
+            pull: Pull,
+            mov: Mov,
+            irq: Irq,
+            set: Set,
+        };
 
-    pub const Tag = enum(u3) {
-        jmp,
-        wait,
-        in,
-        out,
-        push_pull,
-        mov,
-        irq,
-        set,
-    };
+        pub const Tag = enum(u3) {
+            jmp,
+            wait,
+            in,
+            out,
+            push_pull,
+            mov,
+            irq,
+            set,
+        };
 
-    pub const Jmp = packed struct(u8) {
-        address: u5,
-        condition: Token.Instruction.Jmp.Condition,
-    };
+        pub const Jmp = packed struct(u8) {
+            address: u5,
+            condition: Token.Instruction.Jmp.Condition,
+        };
 
-    pub const Wait = packed struct(u8) {
-        index: u5,
-        source: Token.Instruction.Wait.Source,
-        polarity: u1,
-    };
-
-    pub const In = packed struct(u8) {
-        bit_count: u5,
-        source: Token.Instruction.In.Source,
-    };
-
-    pub const Out = packed struct(u8) {
-        bit_count: u5,
-        destination: Token.Instruction.Out.Destination,
-    };
-
-    pub const Push = packed struct(u8) {
-        _reserved0: u5 = 0,
-        block: u1,
-        if_full: u1,
-        _reserved1: u1 = 0,
-    };
-
-    pub const Pull = packed struct(u8) {
-        _reserved0: u5 = 0,
-        block: u1,
-        if_empty: u1,
-        _reserved1: u1 = 1,
-    };
-
-    pub const Mov = packed struct(u8) {
-        source: Token.Instruction.Mov.Source,
-        operation: Token.Instruction.Mov.Operation,
-        destination: Token.Instruction.Mov.Destination,
-    };
-
-    pub const Irq = switch (cpu) {
-        .RP2040 => packed struct(u8) {
+        pub const Wait = packed struct(u8) {
             index: u5,
-            wait: u1,
-            clear: u1,
-            reserved: u1 = 0,
-        },
-        .RP2350 => packed struct(u8) {
-            index: u3,
-            idxmode: u2,
-            wait: u1,
-            clear: u1,
-            reserved: u1 = 0,
-        },
-    };
+            source: Token.Instruction.Wait.Source,
+            polarity: u1,
+        };
 
-    pub const Set = packed struct(u8) {
-        data: u5,
-        destination: Token.Instruction.Set.Destination,
+        pub const In = packed struct(u8) {
+            bit_count: u5,
+            source: Token.Instruction.In.Source,
+        };
+
+        pub const Out = packed struct(u8) {
+            bit_count: u5,
+            destination: Token.Instruction.Out.Destination,
+        };
+
+        pub const Push = packed struct(u8) {
+            _reserved0: u5 = 0,
+            block: u1,
+            if_full: u1,
+            _reserved1: u1 = 0,
+        };
+
+        pub const Pull = packed struct(u8) {
+            _reserved0: u5 = 0,
+            block: u1,
+            if_empty: u1,
+            _reserved1: u1 = 1,
+        };
+
+        pub const Mov = packed struct(u8) {
+            source: Token.Instruction.Mov.Source,
+            operation: Token.Instruction.Mov.Operation,
+            destination: Token.Instruction.Mov.Destination,
+        };
+
+        pub const Irq = switch (format) {
+            .RP2040 => packed struct(u8) {
+                index: u5,
+                wait: u1,
+                clear: u1,
+                reserved: u1 = 0,
+            },
+            .RP2350 => packed struct(u8) {
+                index: u3,
+                idxmode: u2,
+                wait: u1,
+                clear: u1,
+                reserved: u1 = 0,
+            },
+        };
+
+        pub const Set = packed struct(u8) {
+            data: u5,
+            destination: Token.Instruction.Set.Destination,
+        };
     };
-};
+}
 
 //==============================================================================
 // Encoder Tests
@@ -652,8 +657,8 @@ const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
 
-fn encode_bounded_output_impl(source: []const u8, diags: *?assembler.Diagnostics) !Encoder(.{}).Output {
-    const tokens = try tokenizer.tokenize(source, diags, .{});
+fn encode_bounded_output_impl(comptime format: assembler.Format, source: []const u8, diags: *?assembler.Diagnostics) !Encoder(.{}).Output {
+    const tokens = try tokenizer.tokenize(format, source, diags, .{});
     var encoder = Encoder(.{}).init(tokens.slice());
     return try encoder.encode_output(diags);
 }

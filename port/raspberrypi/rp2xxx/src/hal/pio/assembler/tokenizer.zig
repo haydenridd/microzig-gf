@@ -1235,8 +1235,12 @@ const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
 
-const DirectiveTag = @typeInfo(Token.Directive).Union.tag_type.?;
-const PayloadTag = @typeInfo(Token.Instruction.Payload).Union.tag_type.?;
+fn DirectiveTag(comptime format: assembler.Format) type {
+    return @typeInfo(Token(format).Directive).Union.tag_type.?;
+}
+fn PayloadTag(comptime format: assembler.Format) type {
+    return @typeInfo(Token(format).Instruction.Payload).Union.tag_type.?;
+}
 
 fn expect_program(comptime format: assembler.Format, expected: []const u8, actual: Token(format)) !void {
     try expectEqual(Token(format).Tag.program, @as(Token(format).Tag, actual.data));
@@ -1260,21 +1264,21 @@ fn expect_opt_value(expected: ?Value, actual: ?Value) !void {
         };
 }
 
-fn expect_define(expected: Token.Define, actual: Token) !void {
-    try expectEqual(Token.Tag.define, @as(Token.Tag, actual.data));
+fn expect_define(comptime format: assembler.Format, expected: Token(format).Define, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.define, @as(Token(format).Tag, actual.data));
 
     const define = actual.data.define;
     try expectEqualStrings(expected.name, define.name);
     try expect_value(expected.value, define.value);
 }
 
-fn expect_origin(expected: Value, actual: Token) !void {
-    try expectEqual(Token.Tag.origin, @as(Token.Tag, actual.data));
+fn expect_origin(comptime format: assembler.Format, expected: Value, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.origin, @as(Token(format).Tag, actual.data));
     try expect_value(expected, actual.data.origin);
 }
 
-fn expect_side_set(expected: Token.SideSet, actual: Token) !void {
-    try expectEqual(Token.Tag.side_set, @as(Token.Tag, actual.data));
+fn expect_side_set(comptime format: assembler.Format, expected: Token(format).SideSet, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.side_set, @as(Token(format).Tag, actual.data));
 
     const side_set = actual.data.side_set;
     try expect_value(expected.count, side_set.count);
@@ -1282,16 +1286,16 @@ fn expect_side_set(expected: Token.SideSet, actual: Token) !void {
     try expectEqual(expected.pindir, side_set.pindir);
 }
 
-fn expect_wrap_target(actual: Token) !void {
-    try expectEqual(Token.Tag.wrap_target, @as(Token.Tag, actual.data));
+fn expect_wrap_target(comptime format: assembler.Format, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.wrap_target, @as(Token(format).Tag, actual.data));
 }
 
-fn expect_wrap(actual: Token) !void {
-    try expectEqual(Token.Tag.wrap, @as(Token.Tag, actual.data));
+fn expect_wrap(comptime format: assembler.Format, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.wrap, @as(Token(format).Tag, actual.data));
 }
 
-fn expect_lang_opt(expected: Token.LangOpt, actual: Token) !void {
-    try expectEqual(Token.Tag.lang_opt, @as(Token.Tag, actual.data));
+fn expect_lang_opt(comptime format: assembler.Format, expected: Token(format).LangOpt, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.lang_opt, @as(Token(format).Tag, actual.data));
 
     const lang_opt = actual.data.lang_opt;
     try expectEqualStrings(expected.lang, lang_opt.lang);
@@ -1299,13 +1303,13 @@ fn expect_lang_opt(expected: Token.LangOpt, actual: Token) !void {
     try expectEqualStrings(expected.option, lang_opt.option);
 }
 
-fn expect_word(expected: Value, actual: Token) !void {
-    try expectEqual(Token.Tag.word, @as(Token.Tag, actual.data));
+fn expect_word(comptime format: assembler.Format, expected: Value, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.word, @as(Token(format).Tag, actual.data));
     try expect_value(expected, actual.data.word);
 }
 
-fn expect_label(expected: Token.Label, actual: Token) !void {
-    try expectEqual(Token.Tag.label, @as(Token.Tag, actual.data));
+fn expect_label(comptime format: assembler.Format, expected: Token(format).Label, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.label, @as(Token(format).Tag, actual.data));
 
     const label = actual.data.label;
     try expectEqual(expected.public, label.public);
@@ -1317,25 +1321,27 @@ const ExpectedNopInstr = struct {
     side_set: ?Value = null,
 };
 
-fn expect_instr_nop(expected: ExpectedNopInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.nop, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_nop(comptime format: assembler.Format, expected: ExpectedNopInstr, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).nop, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
     try expect_opt_value(expected.side_set, instr.side_set);
 }
 
-const ExpectedSetInstr = struct {
-    dest: Token.Instruction.Set.Destination,
-    value: Value,
-    delay: ?Value = null,
-    side_set: ?Value = null,
-};
+fn ExpectedSetInstr(comptime format: assembler.Format) type {
+    return struct {
+        dest: Token(format).Instruction.Set.Destination,
+        value: Value,
+        delay: ?Value = null,
+        side_set: ?Value = null,
+    };
+}
 
-fn expect_instr_set(expected: ExpectedSetInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.set, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_set(comptime format: assembler.Format, expected: ExpectedSetInstr(format), actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).set, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1346,16 +1352,18 @@ fn expect_instr_set(expected: ExpectedSetInstr, actual: Token) !void {
     try expect_value(expected.value, set.value);
 }
 
-const ExpectedJmpInstr = struct {
-    cond: Token.Instruction.Jmp.Condition = .always,
-    target: []const u8,
-    delay: ?Value = null,
-    side_set: ?Value = null,
-};
+fn ExpectedJmpInstr(comptime format: assembler.Format) type {
+    return struct {
+        cond: Token(format).Instruction.Jmp.Condition = .always,
+        target: []const u8,
+        delay: ?Value = null,
+        side_set: ?Value = null,
+    };
+}
 
-fn expect_instr_jmp(expected: ExpectedJmpInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.jmp, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_jmp(comptime format: assembler.Format, expected: ExpectedJmpInstr(format), actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).jmp, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1366,19 +1374,21 @@ fn expect_instr_jmp(expected: ExpectedJmpInstr, actual: Token) !void {
     try expectEqualStrings(expected.target, jmp.target);
 }
 
-const ExpectedWaitInstr = struct {
-    polarity: u1,
-    source: Token.Instruction.Wait.Source,
-    num: Value,
-    // only valid for irq source
-    rel: bool = false,
-    delay: ?Value = null,
-    side_set: ?Value = null,
-};
+fn ExpectedWaitInstr(comptime format: assembler.Format) type {
+    return struct {
+        polarity: u1,
+        source: Token(format).Instruction.Wait.Source,
+        num: Value,
+        // only valid for irq source
+        rel: bool = false,
+        delay: ?Value = null,
+        side_set: ?Value = null,
+    };
+}
 
-fn expect_instr_wait(expected: ExpectedWaitInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.wait, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_wait(comptime format: assembler.Format, expected: ExpectedWaitInstr(format), actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).wait, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1390,16 +1400,18 @@ fn expect_instr_wait(expected: ExpectedWaitInstr, actual: Token) !void {
     try expect_value(expected.num, wait.num);
 }
 
-const ExpectedInInstr = struct {
-    source: Token.Instruction.In.Source,
-    bit_count: u5,
-    delay: ?Value = null,
-    side_set: ?Value = null,
-};
+fn ExpectedInInstr(comptime format: assembler.Format) type {
+    return struct {
+        source: Token(format).Instruction.In.Source,
+        bit_count: u5,
+        delay: ?Value = null,
+        side_set: ?Value = null,
+    };
+}
 
-fn expect_instr_in(expected: ExpectedInInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.in, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_in(comptime format: assembler.Format, expected: ExpectedInInstr(format), actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).in, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1410,16 +1422,18 @@ fn expect_instr_in(expected: ExpectedInInstr, actual: Token) !void {
     try expectEqual(expected.bit_count, in.bit_count);
 }
 
-const ExpectedOutInstr = struct {
-    destination: Token.Instruction.Out.Destination,
-    bit_count: u5,
-    delay: ?Value = null,
-    side_set: ?Value = null,
-};
+fn ExpectedOutInstr(comptime format: assembler.Format) type {
+    return struct {
+        destination: Token(format).Instruction.Out.Destination,
+        bit_count: u5,
+        delay: ?Value = null,
+        side_set: ?Value = null,
+    };
+}
 
-fn expect_instr_out(expected: ExpectedOutInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.out, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_out(comptime format: assembler.Format, expected: ExpectedOutInstr(format), actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).out, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1437,9 +1451,9 @@ const ExpectedPushInstr = struct {
     side_set: ?Value = null,
 };
 
-fn expect_instr_push(expected: ExpectedPushInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.push, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_push(comptime format: assembler.Format, expected: ExpectedPushInstr, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).push, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1457,9 +1471,9 @@ const ExpectedPullInstr = struct {
     side_set: ?Value = null,
 };
 
-fn expect_instr_pull(expected: ExpectedPullInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.pull, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_pull(comptime format: assembler.Format, expected: ExpectedPullInstr, actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).pull, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1470,17 +1484,19 @@ fn expect_instr_pull(expected: ExpectedPullInstr, actual: Token) !void {
     try expectEqual(expected.ifempty, pull.ifempty);
 }
 
-const ExpectedMovInstr = struct {
-    source: Token.Instruction.Mov.Source,
-    destination: Token.Instruction.Mov.Destination,
-    operation: Token.Instruction.Mov.Operation = .none,
-    delay: ?Value = null,
-    side_set: ?Value = null,
-};
+fn ExpectedMovInstr(comptime format: assembler.Format) type {
+    return struct {
+        source: Token(format).Instruction.Mov.Source,
+        destination: Token(format).Instruction.Mov.Destination,
+        operation: Token(format).Instruction.Mov.Operation = .none,
+        delay: ?Value = null,
+        side_set: ?Value = null,
+    };
+}
 
-fn expect_instr_mov(expected: ExpectedMovInstr, actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.mov, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_mov(comptime format: assembler.Format, expected: ExpectedMovInstr(format), actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).mov, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1513,9 +1529,9 @@ fn ExpectedIrqInstr(comptime format: assembler.Format) type {
     };
 }
 
-fn expect_instr_irq(comptime format: assembler.Format, expected: ExpectedIrqInstr(format), actual: Token) !void {
-    try expectEqual(Token.Tag.instruction, @as(Token.Tag, actual.data));
-    try expectEqual(PayloadTag.irq, @as(PayloadTag, actual.data.instruction.payload));
+fn expect_instr_irq(comptime format: assembler.Format, expected: ExpectedIrqInstr(format), actual: Token(format)) !void {
+    try expectEqual(Token(format).Tag.instruction, @as(Token(format).Tag, actual.data));
+    try expectEqual(PayloadTag(format).irq, @as(PayloadTag(format), actual.data.instruction.payload));
 
     const instr = actual.data.instruction;
     try expect_opt_value(expected.delay, instr.delay);
@@ -1574,158 +1590,195 @@ test "tokenize.block comment" {
 }
 
 test "tokenize.code block" {
-    const tokens = try bounded_tokenize(.RP2040,
-        \\% c-sdk {
-        \\   int foo;
-        \\%}
-    );
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format,
+            \\% c-sdk {
+            \\   int foo;
+            \\%}
+        );
 
-    try expectEqual(@as(usize, 0), tokens.len);
+        try expectEqual(@as(usize, 0), tokens.len);
+    }
 }
 
 test "tokenize.directive.program" {
-    const tokens = try bounded_tokenize(.RP2040, ".program arst");
-    try expect_program(.RP2040, "arst", tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".program arst");
+        try expect_program(format, "arst", tokens.get(0));
+    }
 }
 
 test "tokenize.directive.define" {
-    const tokens = try bounded_tokenize(.RP2040, ".define symbol_name 1");
-
-    try expect_define(.{
-        .name = "symbol_name",
-        .value = .{ .expression = "1" },
-        .index = 8,
-    }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".define symbol_name 1");
+        try expect_define(format, .{
+            .name = "symbol_name",
+            .value = .{ .expression = "1" },
+            .index = 8,
+        }, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.define.public" {
-    const tokens = try bounded_tokenize(.RP2040, ".define public symbol_name 0x1");
-
-    try expect_define(.{
-        .name = "symbol_name",
-        .value = .{ .expression = "0x1" },
-        .public = true,
-        .index = 15,
-    }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".define public symbol_name 0x1");
+        try expect_define(format, .{
+            .name = "symbol_name",
+            .value = .{ .expression = "1" },
+            .index = 8,
+        }, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.define.with expression" {
-    const tokens = try bounded_tokenize(.RP2040,
-        \\.define symbol_name 0x1
-        \\.define something (symbol_name * 2)
-    );
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format,
+            \\.define symbol_name 0x1
+            \\.define something (symbol_name * 2)
+        );
 
-    try expect_define(.{
-        .name = "symbol_name",
-        .value = .{ .expression = "0x1" },
-        .index = 8,
-    }, tokens.get(0));
+        try expect_define(format, .{
+            .name = "symbol_name",
+            .value = .{ .expression = "0x1" },
+            .index = 8,
+        }, tokens.get(0));
 
-    try expect_define(.{
-        .name = "something",
-        .value = .{ .expression = "(symbol_name * 2)" },
-        .index = 32,
-    }, tokens.get(1));
+        try expect_define(format, .{
+            .name = "something",
+            .value = .{ .expression = "(symbol_name * 2)" },
+            .index = 32,
+        }, tokens.get(1));
+    }
 }
 
 test "tokenize.directive.origin" {
-    const tokens = try bounded_tokenize(.RP2040, ".origin 0x10");
-    try expect_origin(.{ .integer = 0x10 }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".origin 0x10");
+        try expect_origin(format, .{ .integer = 0x10 }, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.side_set" {
-    const tokens = try bounded_tokenize(.RP2040, ".side_set 1");
-    try expect_side_set(.{ .count = .{ .integer = 1 } }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".side_set 1");
+        try expect_side_set(format, .{ .count = .{ .integer = 1 } }, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.side_set.opt" {
-    const tokens = try bounded_tokenize(.RP2040, ".side_set 1 opt");
-    try expect_side_set(.{ .count = .{ .integer = 1 }, .opt = true }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".side_set 1 opt");
+        try expect_side_set(format, .{ .count = .{ .integer = 1 }, .opt = true }, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.side_set.pindirs" {
-    const tokens = try bounded_tokenize(.RP2040, ".side_set 1 pindirs");
-    try expect_side_set(.{ .count = .{ .integer = 1 }, .pindir = true }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".side_set 1 pindirs");
+        try expect_side_set(format, .{ .count = .{ .integer = 1 }, .pindir = true }, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.wrap_target" {
-    const tokens = try bounded_tokenize(.RP2040, ".wrap_target");
-    try expect_wrap_target(tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".wrap_target");
+        try expect_wrap_target(format, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.wrap" {
-    const tokens = try bounded_tokenize(.RP2040, ".wrap");
-    try expect_wrap(tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".wrap");
+        try expect_wrap(format, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.lang_opt" {
-    const tokens = try bounded_tokenize(.RP2040, ".lang_opt c flag foo");
-    try expect_lang_opt(.{ .lang = "c", .name = "flag", .option = "foo" }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".lang_opt c flag foo");
+        try expect_lang_opt(format, .{ .lang = "c", .name = "flag", .option = "foo" }, tokens.get(0));
+    }
 }
 
 test "tokenize.directive.word" {
-    const tokens = try bounded_tokenize(.RP2040, ".word 0xaaaa");
-    try expect_word(.{ .integer = 0xaaaa }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, ".word 0xaaaa");
+        try expect_word(format, .{ .integer = 0xaaaa }, tokens.get(0));
+    }
 }
 
 test "tokenize.label" {
-    const tokens = try bounded_tokenize(.RP2040, "my_label:");
-    try expect_label(.{ .name = "my_label" }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, "my_label:");
+        try expect_label(format, .{ .name = "my_label" }, tokens.get(0));
+    }
 }
 
 test "tokenize.label.public" {
-    const tokens = try bounded_tokenize(.RP2040, "public my_label:");
-    try expect_label(.{ .name = "my_label", .public = true }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, "public my_label:");
+        try expect_label(format, .{ .name = "my_label", .public = true }, tokens.get(0));
+    }
 }
 
 test "tokenize.instr.nop" {
-    const tokens = try bounded_tokenize(.RP2040, "nop");
-    try expect_instr_nop(.{}, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, "nop");
+        try expect_instr_nop(format, .{}, tokens.get(0));
+    }
 }
 
 test "tokenize.instr.jmp.label" {
-    const tokens = try bounded_tokenize(.RP2040, "jmp my_label");
-    try expect_instr_jmp(.{ .target = "my_label" }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, "jmp my_label");
+        try expect_instr_jmp(format, .{ .target = "my_label" }, tokens.get(0));
+    }
 }
 
 test "tokenize.instr.jmp.value" {
-    const tokens = try bounded_tokenize(.RP2040, "jmp 0x2");
-    try expect_instr_jmp(.{ .target = "0x2" }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const tokens = try bounded_tokenize(format, "jmp 0x2");
+        try expect_instr_jmp(format, .{ .target = "0x2" }, tokens.get(0));
+    }
 }
 
 test "tokenize.instr.jmp.conditions" {
-    const Condition = Token(.RP2040).Instruction.Jmp.Condition;
-    const cases = std.StaticStringMap(Condition).initComptime(.{
-        .{ "!x", .x_is_zero },
-        .{ "x--", .x_dec },
-        .{ "!y", .y_is_zero },
-        .{ "y--", .y_dec },
-        .{ "x!=y", .x_is_not_y },
-        .{ "pin", .pin },
-        .{ "!osre", .osre_not_empty },
-    });
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        const Condition = Token(format).Instruction.Jmp.Condition;
+        const cases = std.StaticStringMap(Condition).initComptime(.{
+            .{ "!x", .x_is_zero },
+            .{ "x--", .x_dec },
+            .{ "!y", .y_is_zero },
+            .{ "y--", .y_dec },
+            .{ "x!=y", .x_is_not_y },
+            .{ "pin", .pin },
+            .{ "!osre", .osre_not_empty },
+        });
 
-    inline for (comptime cases.keys(), comptime cases.values()) |op, cond| {
-        const tokens = try bounded_tokenize(.RP2040, comptime std.fmt.comptimePrint("jmp {s} my_label", .{op}));
+        inline for (comptime cases.keys(), comptime cases.values()) |op, cond| {
+            const tokens = try bounded_tokenize(format, comptime std.fmt.comptimePrint("jmp {s} my_label", .{op}));
 
-        try expect_instr_jmp(.{ .cond = cond, .target = "my_label" }, tokens.get(0));
+            try expect_instr_jmp(format, .{ .cond = cond, .target = "my_label" }, tokens.get(0));
+        }
     }
 }
 
 test "tokenize.instr.wait" {
-    inline for (.{ "gpio", "pin", "irq" }) |source| {
-        const tokens = try bounded_tokenize(.RP2040, comptime std.fmt.comptimePrint("wait 0 {s} 1", .{source}));
-        try expect_instr_wait(.{
-            .polarity = 0,
-            .source = @field(Token.Instruction.Wait.Source, source),
-            .num = .{ .integer = 1 },
-        }, tokens.get(0));
+    inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+        inline for (.{ "gpio", "pin", "irq" }) |source| {
+            const tokens = try bounded_tokenize(format, comptime std.fmt.comptimePrint("wait 0 {s} 1", .{source}));
+            try expect_instr_wait(format, .{
+                .polarity = 0,
+                .source = @field(Token(format).Instruction.Wait.Source, source),
+                .num = .{ .integer = 1 },
+            }, tokens.get(0));
+        }
     }
 }
 
 test "tokenize.instr.wait.irq.rel" {
     const tokens = try bounded_tokenize(.RP2040, "wait 1 irq 1 rel");
-    try expect_instr_wait(.{
+    try expect_instr_wait(.RP2040, .{
         .polarity = 1,
         .source = .irq,
         .num = .{ .integer = 1 },
@@ -1747,8 +1800,8 @@ test "tokenize.instr.in" {
             bit_count,
         }));
 
-        try expect_instr_in(.{
-            .source = @field(Token.Instruction.In.Source, source),
+        try expect_instr_in(.RP2040, .{
+            .source = @field(Token(.RP2040).Instruction.In.Source, source),
             .bit_count = @as(u5, @intCast(bit_count)),
         }, tokens.get(0));
     }
@@ -1770,8 +1823,8 @@ test "tokenize.instr.out" {
             bit_count,
         }));
 
-        try expect_instr_out(.{
-            .destination = @field(Token.Instruction.Out.Destination, destination),
+        try expect_instr_out(.RP2040, .{
+            .destination = @field(Token(.RP2040).Instruction.Out.Destination, destination),
             .bit_count = @as(u5, @intCast(bit_count)),
         }, tokens.get(0));
     }
@@ -1779,26 +1832,26 @@ test "tokenize.instr.out" {
 
 test "tokenize.instr.push" {
     const tokens = try bounded_tokenize(.RP2040, "push");
-    try expect_instr_push(.{}, tokens.get(0));
+    try expect_instr_push(.RP2040, .{}, tokens.get(0));
 }
 
 test "tokenize.instr.push.block" {
     const tokens = try bounded_tokenize(.RP2040, "push block");
-    try expect_instr_push(.{
+    try expect_instr_push(.RP2040, .{
         .block = true,
     }, tokens.get(0));
 }
 
 test "tokenize.instr.push.noblock" {
     const tokens = try bounded_tokenize(.RP2040, "push noblock");
-    try expect_instr_push(.{
+    try expect_instr_push(.RP2040, .{
         .block = false,
     }, tokens.get(0));
 }
 
 test "tokenize.instr.push.iffull" {
     const tokens = try bounded_tokenize(.RP2040, "push iffull noblock");
-    try expect_instr_push(.{
+    try expect_instr_push(.RP2040, .{
         .block = false,
         .iffull = true,
     }, tokens.get(0));
@@ -1806,26 +1859,26 @@ test "tokenize.instr.push.iffull" {
 
 test "tokenize.instr.pull" {
     const tokens = try bounded_tokenize(.RP2040, "pull");
-    try expect_instr_pull(.{}, tokens.get(0));
+    try expect_instr_pull(.RP2040, .{}, tokens.get(0));
 }
 
 test "tokenize.instr.pull.block" {
     const tokens = try bounded_tokenize(.RP2040, "pull block");
-    try expect_instr_pull(.{
+    try expect_instr_pull(.RP2040, .{
         .block = true,
     }, tokens.get(0));
 }
 
 test "tokenize.instr.pull.noblock" {
     const tokens = try bounded_tokenize(.RP2040, "pull noblock");
-    try expect_instr_pull(.{
+    try expect_instr_pull(.RP2040, .{
         .block = false,
     }, tokens.get(0));
 }
 
 test "tokenize.instr.pull.ifempty" {
     const tokens = try bounded_tokenize(.RP2040, "pull ifempty noblock");
-    try expect_instr_pull(.{
+    try expect_instr_pull(.RP2040, .{
         .block = false,
         .ifempty = true,
     }, tokens.get(0));
@@ -1843,8 +1896,8 @@ test "tokenize.instr.mov" {
     }) |source| {
         const tokens = try bounded_tokenize(.RP2040, comptime std.fmt.comptimePrint("mov x {s}", .{source}));
 
-        try expect_instr_mov(.{
-            .source = @field(Token.Instruction.Mov.Source, source),
+        try expect_instr_mov(.RP2040, .{
+            .source = @field(Token(.RP2040).Instruction.Mov.Source, source),
             .destination = .x,
         }, tokens.get(0));
     }
@@ -1860,13 +1913,13 @@ test "tokenize.instr.mov" {
     }) |dest| {
         const tokens = try bounded_tokenize(.RP2040, comptime std.fmt.comptimePrint("mov {s} x", .{dest}));
 
-        try expect_instr_mov(.{
+        try expect_instr_mov(.RP2040, .{
             .source = .x,
-            .destination = @field(Token.Instruction.Mov.Destination, dest),
+            .destination = @field(Token(.RP2040).Instruction.Mov.Destination, dest),
         }, tokens.get(0));
     }
 
-    const Operation = Token.Instruction.Mov.Operation;
+    const Operation = Token(.RP2040).Instruction.Mov.Operation;
     const operations = std.StaticStringMap(Operation).initComptime(.{
         .{ "!", .invert },
         .{ "~", .invert },
@@ -1880,7 +1933,7 @@ test "tokenize.instr.mov" {
                 space,
             }));
 
-            try expect_instr_mov(.{
+            try expect_instr_mov(.RP2040, .{
                 .destination = .x,
                 .operation = operation,
                 .source = .y,
@@ -1904,23 +1957,25 @@ test "tokenize.instr.irq" {
     });
 
     inline for (comptime modes.keys(), comptime modes.values(), 0..) |key, value, num| {
-        const tokens = try bounded_tokenize(.RP2040, comptime std.fmt.comptimePrint("irq {s} {}", .{
-            key,
-            num,
-        }));
+        inline for (comptime .{ assembler.Format.RP2040, assembler.Format.RP2350 }) |format| {
+            const tokens = try bounded_tokenize(format, comptime std.fmt.comptimePrint("irq {s} {}", .{
+                key,
+                num,
+            }));
 
-        try expect_instr_irq(.{
-            .clear = value.clear,
-            .wait = value.wait,
-            .num = num,
-        }, tokens.get(0));
+            try expect_instr_irq(format, .{
+                .clear = value.clear,
+                .wait = value.wait,
+                .num = num,
+            }, tokens.get(0));
+        }
     }
 }
 
 test "tokenize.instr.irq.rel" {
     const tokens = try bounded_tokenize(.RP2040, "irq set 2 rel");
     // TODO: rp2350 support
-    try expect_instr_irq(.{
+    try expect_instr_irq(.RP2040, .{
         .clear = false,
         .wait = false,
         .num = 2,
@@ -1936,8 +1991,8 @@ test "tokenize.instr.set" {
         "pindirs",
     }) |dest| {
         const tokens = try bounded_tokenize(.RP2040, comptime std.fmt.comptimePrint("set {s}, 2", .{dest}));
-        try expect_instr_set(.{
-            .dest = @field(Token.Instruction.Set.Destination, dest),
+        try expect_instr_set(.RP2040, .{
+            .dest = @field(Token(.RP2040).Instruction.Set.Destination, dest),
             .value = .{ .integer = 2 },
         }, tokens.get(0));
     }
@@ -1945,7 +2000,7 @@ test "tokenize.instr.set" {
 
 test "tokenize.instr.set.with expression including define" {
     const tokens = try bounded_tokenize(.RP2040, "set X, (NUM_CYCLES - 1)         ; initialise the loop counter");
-    try expect_instr_set(.{
+    try expect_instr_set(.RP2040, .{
         .dest = .x,
         .value = .{ .expression = "(NUM_CYCLES - 1)" },
     }, tokens.get(0));
@@ -1968,7 +2023,7 @@ test "tokenize.instr.label prefixed" {
     inline for (instruction_examples) |instr| {
         const tokens = try bounded_tokenize(.RP2040, comptime std.fmt.comptimePrint("my_label: {s}", .{instr}));
         try expectEqual(@as(usize, 2), tokens.len);
-        try expect_label(.{ .name = "my_label" }, tokens.get(0));
+        try expect_label(.RP2040, .{ .name = "my_label" }, tokens.get(0));
     }
 }
 
@@ -2044,7 +2099,7 @@ test "tokenize.instr.side_set and delay reversed" {
 
 test "tokenize.instr.comment with no whitespace" {
     const tokens = try bounded_tokenize(.RP2040, "nop side 0x0 [1]; CSn front porch");
-    try expect_instr_nop(.{
+    try expect_instr_nop(.RP2040, .{
         .side_set = .{ .expression = "0x0" },
         .delay = .{ .expression = "1" },
     }, tokens.get(0));
